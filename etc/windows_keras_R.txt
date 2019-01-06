@@ -1,0 +1,13 @@
+﻿anaconda 설치
+https://repo.continuum.io/archive/
+Anaconda3-5.2.0-Windows-x86_64.exe
+
+anaconda prompt 관리자 권한으로 실행
+conda update -n base conda
+conda update --all
+
+
+library(keras)
+install_keras(method = "conda")
+
+install_keras(method = "conda", tensorflow = "gpu")
