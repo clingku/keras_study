@@ -1,9 +1,11 @@
 ---
 title: "Introduction to convnets"
-output: 
-  html_notebook: 
-    theme: cerulean
+output:
+  html_document:
+    df_print: paged
+  html_notebook:
     highlight: textmate
+    theme: cerulean
 ---
 
 ```{r setup, include=FALSE}

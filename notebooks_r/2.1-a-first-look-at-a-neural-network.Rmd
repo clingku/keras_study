@@ -1,9 +1,11 @@
 ---
 title: "A first look at a neural network"
-output: 
-  html_notebook: 
-    theme: cerulean
+output:
+  html_notebook:
     highlight: textmate
+    theme: cerulean
+  html_document:
+    df_print: paged
 ---
 
 ```{r setup, include=FALSE}
@@ -18,7 +20,7 @@ This notebook contains the code samples found in Chapter 2, Section 1 of [Deep L
 
 Let's look at a concrete example of a neural network that uses the Keras R package to learn to classify hand-written digits. Unless you already have experience with Keras or similar libraries, you will not understand everything about this first example right away. You probably haven't even installed Keras yet. Don't worry, that is perfectly fine. In the next chapter, we will review each element in our example and explain them in detail. So don't worry if some steps seem arbitrary or look like magic to you! We've got to start somewhere.
 
-The problem we're trying to solve here is to classify grayscale images of handwritten digits (28 pixels by 28 pixels) into their 10 categories (0 to 9). We'll use the MNIST dataset, a classic dataset in the machine-learning community, which has been around almost as long as the field itself and has been intensively studied. It's a set of 60,000 training images, plus 10,000 test images, assembled by the National Institute of Standards and Technology (the NIST in MNIST) in the 1980s. You can think of "solving" MNIST as the "Hello World" of deep learningâ€”it's what you do to verify that your algorithms are working as expected. As you become a machine-learning practitioner, you'll see MNIST come up over and over again, in scientific papers, blog posts, and so on. 
+The problem we're trying to solve here is to classify grayscale images of handwritten digits (28 pixels by 28 pixels) into their 10 categories (0 to 9). We'll use the MNIST dataset, a classic dataset in the machine-learning community, which has been around almost as long as the field itself and has been intensively studied. It's a set of 60,000 training images, plus 10,000 test images, assembled by the National Institute of Standards and Technology (the NIST in MNIST) in the 1980s. You can think of "solving" MNIST as the "Hello World" of deep learning?€”it's what you do to verify that your algorithms are working as expected. As you become a machine-learning practitioner, you'll see MNIST come up over and over again, in scientific papers, blog posts, and so on. 
 
 The MNIST dataset comes preloaded in Keras, in the form of `train` and `test` lists, each of which includes a set of images (`x`) and associated labels (`y`):
 
@@ -64,15 +66,15 @@ network <- keras_model_sequential() %>%
   layer_dense(units = 10, activation = "softmax")
 ```
 
-The core building block of neural networks is the _layer_, a data-processing module that you can think of as a filter for data. Some data comes in, and it comes out in a more useful form. Specifically, layers extract _representations_ out of the data fed into themâ€”hopefully representations that are more meaningful for the problem at hand. Most of deep learning consists of chaining together simple layers that will implement a form of progressive _data distillation_. A deep-learning model is like a sieve for data processing, made of a succession of increasingly refined data filtersâ€”the layers.
+The core building block of neural networks is the _layer_, a data-processing module that you can think of as a filter for data. Some data comes in, and it comes out in a more useful form. Specifically, layers extract _representations_ out of the data fed into them?€”hopefully representations that are more meaningful for the problem at hand. Most of deep learning consists of chaining together simple layers that will implement a form of progressive _data distillation_. A deep-learning model is like a sieve for data processing, made of a succession of increasingly refined data filters?€”the layers.
 
 Here our network consists of a sequence of two layers, which are densely connected (also called _fully connected_) neural layers. The second (and last) layer is a 10-way _softmax_ layer, which means it will return an array of 10 probability scores (summing to 1). Each score will be the probability that the current digit image belongs to one of our 10 digit classes.
 
 To make the network ready for training, we need to pick three more things, as part of the _compilation_ step:
 
-* _A loss function_â€”How the network will be able to measure how good a job it's doing on its training data, and thus how it will be able to steer itself in the right direction.
-* _An optimizer_â€”The mechanism through which the network will update itself based on the data it sees and its loss function.
-* _Metrics to monitor during training and testing_â€”Here we'll only care about accuracy (the fraction of the images that were correctly classified).
+* _A loss function_?€”How the network will be able to measure how good a job it's doing on its training data, and thus how it will be able to steer itself in the right direction.
+* _An optimizer_?€”The mechanism through which the network will update itself based on the data it sees and its loss function.
+* _Metrics to monitor during training and testing_?€”Here we'll only care about accuracy (the fraction of the images that were correctly classified).
 
 The exact purpose of the loss function and the optimizer will be made clear throughout the next two chapters.
 
