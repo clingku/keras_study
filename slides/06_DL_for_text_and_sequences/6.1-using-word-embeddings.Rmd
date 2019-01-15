@@ -1,0 +1,424 @@
+---
+title: "Using word embeddings"
+output: 
+  html_notebook: 
+    theme: cerulean
+    highlight: textmate
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+### 6.1.2 Using word embeddings
+
+***
+
+word embedding == dense word vectors
+
+* one-hot encoding
+    + binary, sparse (mostly made of zeros)
+    + very high-dimensional (same dimensionality as the number of words in the vocabulary)
+* word embedding
+    + dense
+    + low-dimensional floating-point vectors
+
+***
+
+
+![Figure 6.2 word embeddings vs. one hot encoding](images/6.2.png){width=300px}
+
+There are two ways to obtain word embeddings:
+
+* Learn word embeddings jointly with the main task you care about (e.g. document classification or sentiment prediction). In this setup, you would start with random word vectors, then learn your word vectors in the same way that you learn the weights of a neural network.
+* Load into your model word embeddings that were pre-computed using a different machine learning task than the one you are trying to solve. These are called "pre-trained word embeddings". 
+
+Let's take a look at both.
+***
+### Learning word embeddings with an embedding layer
+
+단어 사이의 의미 있는 관계를 기하학적인 공간에 반영하는 것
+
+![Figure 6.3 A toy example of a wordembedding space](images/6.3.png){width=300px}
+
+The importance of certain semantic relationships varies from task to task.
+
+It’s thus reasonable to learn a new embedding space with every new task. Fortunately, backpropagation makes this easy, and Keras makes it even easier. It’s about learning the weights of a layer using layer_embedding.
+
+
+
+```{r}
+library(keras)
+
+# The embedding layer takes at least two arguments:
+# the number of possible tokens, here 1000 (1 + maximum word index),
+# and the dimensionality of the embeddings, here 64.
+embedding_layer <- layer_embedding(input_dim = 1000, output_dim = 64) 
+```
+
+input_dim = 1000 : 단어의 타입 수
+
+output_dim = 64 : 임베딩 차원
+
+
+![Figure 6.4 An embedding layer](images/6.4.png){width=500px}
+
+쉽게 말하면 정수 인덱스를 dense vactor로 매핑하는 것
+
+***
+#### Listing 6.6 Loading the IMDB data for use with an embedding layer
+
+* embedding
+    + 10,000 most common words
+    + cut off the reviews after only 20 words
+    + 8-dimensional embeddings
+    + input integer sequences (2D integer tensor) into embedded sequences (3D float tensor)
+* flatten the tensor to 2D
+* train a single dense layer
+* classification
+
+```{r}
+# Number of words to consider as features
+max_features <- 10000
+# Cut texts after this number of words 
+# (among top max_features most common words)
+maxlen <- 20
+
+# Load the data as lists of integers.
+imdb <- dataset_imdb(num_words = max_features)
+c(c(x_train, y_train), c(x_test, y_test)) %<-% imdb
+
+# This turns our lists of integers
+# into a 2D integer tensor of shape `(samples, maxlen)`
+x_train <- pad_sequences(x_train, maxlen = maxlen)
+x_test <- pad_sequences(x_test, maxlen = maxlen)
+```
+
+***
+#### Listing 6.7 Using an embedding layer and classifier on the IMDB data
+
+```{r, echo=TRUE, results='hide'}
+model <- keras_model_sequential() %>% 
+  # We specify the maximum input length to our Embedding layer
+  # so we can later flatten the embedded inputs
+  layer_embedding(input_dim = 10000, output_dim = 8, 
+                  input_length = maxlen) %>% 
+  # We flatten the 3D tensor of embeddings 
+  # into a 2D tensor of shape `(samples, maxlen * 8)`
+  layer_flatten() %>% 
+  # We add the classifier on top
+  layer_dense(units = 1, activation = "sigmoid") 
+
+model %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("acc")
+)
+
+history <- model %>% fit(
+  x_train, y_train,
+  epochs = 10,
+  batch_size = 32,
+  validation_split = 0.2
+)
+```
+```{r}
+plot(history)
+```
+
+You get to a validation accuracy of ~76%, which is pretty good considering that we only look at 20 words from each review. But note that merely flattening the embedded sequences and training a single dense layer on top leads to a model that treats each word in the input sequence separately, without considering inter-word relationships and structure sentence (e.g. it would likely treat both _"this movie is a bomb"_ and _"this movie is the bomb"_ as being negative "reviews"). It would be much better to add recurrent layers or 1D convolutional layers on top of the embedded sequences to learn features that take into account each sequenceas a whole. That's what we will focus on in the next few sections.
+
+***
+### Using pre-trained word embeddings
+
+임베딩은 테스크 유형에 맞게 훈련하는 것이 좋지만 데이터가 부족할 경우
+기존의 임베딩 데이터베이스를 레이어에 추가하여 사용할 수 있다.
+
+가장 인기 있는 임베딩 자원은 
+
+* Word2Vec을 이용한 데이터베이스
+* GloVe "Global Vectors for Word Representation"
+
+여기서는 GloVe를 사용해보겠다.
+
+GloVe is based on factorizing a matrix of word co-occurrence statistics.
+
+위키피디아와 Common Crawl 데이터로부터 학습
+
+***
+### Putting it all together: from raw text to word embeddings
+
+* 입력 텍스트 데이터 준비
+    + Download the IMDB data as raw text
+    + __Tokenize the data__
+
+* 기존 임베딩 자원 준비
+    + Download the GloVe word embeddings
+    + Pre-process the embeddings
+
+* 모델 정의
+* __기존 임베딩 모델에 적용__
+* 훈련 및 평가
+
+***
+### Download the IMDB data as raw text
+
+
+First, head to http://ai.stanford.edu/~amaas/data/sentiment and download the raw IMDB dataset (if the URL isn't working anymore, Google "IMDB dataset"). Uncompress it.
+
+Now, let's collect the individual training reviews into a list of strings, one string per review. You'll also collect the review labels (positive / negative) into a `labels` list.
+
+```{r}
+imdb_dir <- "~/Downloads/aclImdb"
+train_dir <- file.path(imdb_dir, "train")
+
+labels <- c()
+texts <- c()
+
+for (label_type in c("neg", "pos")) {
+  label <- switch(label_type, neg = 0, pos = 1)
+  dir_name <- file.path(train_dir, label_type)
+  for (fname in list.files(dir_name, pattern = glob2rx("*.txt"), 
+                           full.names = TRUE)) {
+    texts <- c(texts, readChar(fname, file.info(fname)$size))
+    labels <- c(labels, label)
+  }
+}
+```
+
+***
+### Tokenize the data
+
+
+여기서 훈련 데이터를 200개로 제한하는 이유는 
+기존 임베딩 자원은 데이터가 적을 때 유용하기 때문 
+
+데이터가 충분히 많다면 task-specific한 임베딩이 성능이 더 좋음
+
+***
+#### Listing 6.9 Tokenizing the text of the raw IMDB data
+
+```{r}
+library(keras)
+
+maxlen <- 100                 # We will cut reviews after 100 words
+training_samples <- 200       # We will be training on 200 samples
+validation_samples <- 10000   # We will be validating on 10000 samples
+max_words <- 10000            # We will only consider the top 10,000 words in the dataset
+
+tokenizer <- text_tokenizer(num_words = max_words) %>% 
+  fit_text_tokenizer(texts)
+
+sequences <- texts_to_sequences(tokenizer, texts)
+
+word_index = tokenizer$word_index
+cat("Found", length(word_index), "unique tokens.\n")
+
+data <- pad_sequences(sequences, maxlen = maxlen)
+
+labels <- as.array(labels)
+cat("Shape of data tensor:", dim(data), "\n")
+cat('Shape of label tensor:', dim(labels), "\n")
+
+# Split the data into a training set and a validation set
+# But first, shuffle the data, since we started from data
+# where sample are ordered (all negative first, then all positive).
+indices <- sample(1:nrow(data))
+training_indices <- indices[1:training_samples]
+validation_indices <- indices[(training_samples + 1): 
+                              (training_samples + validation_samples)]
+
+x_train <- data[training_indices,]
+y_train <- labels[training_indices]
+
+x_val <- data[validation_indices,]
+y_val <- labels[validation_indices]
+```
+
+***
+### Download the GloVe word embeddings
+
+
+Head to https://nlp.stanford.edu/projects/glove/ (where you can learn more about the GloVe algorithm), and download the pre-computed embeddings from 2014 English Wikipedia. It's a 822MB zip file named `glove.6B.zip`, containing 100-dimensional embedding vectors for 400,000 words (or non-word tokens). Un-zip it.
+
+***
+### Pre-process the embeddings
+
+
+Let's parse the un-zipped file (it's a `txt` file) to build an index mapping words (as strings) to their vector representation (as number 
+vectors).
+
+***
+#### Listing 6.10 Parsing the GloVe word-embeddings file
+
+```{r}
+glove_dir = '~/Downloads/glove.6B'
+lines <- readLines(file.path(glove_dir, "glove.6B.100d.txt"))
+
+embeddings_index <- new.env(hash = TRUE, parent = emptyenv())
+for (i in 1:length(lines)) {
+  line <- lines[[i]]
+  values <- strsplit(line, " ")[[1]]
+  word <- values[[1]]
+  embeddings_index[[word]] <- as.double(values[-1])
+}
+
+cat("Found", length(embeddings_index), "word vectors.\n")
+```
+
+***
+#### Listing 6.11 Preparing the GloVe word-embeddings matrix
+
+Next, you'll build an embedding matrix that you can load into an embedding layer. It must be a matrix of shape `(max_words, embedding_dim)`, where each entry _i_ contains the `embedding_dim`-dimensional vector for the word of index _i_ in the reference word index (built during tokenization). Note that index 1 isn't supposed to stand for any word or token -- it's a placeholder.
+
+```{r}
+embedding_dim <- 100
+
+embedding_matrix <- array(0, c(max_words, embedding_dim))
+
+for (word in names(word_index)) {
+  index <- word_index[[word]]
+  if (index < max_words) {
+    embedding_vector <- embeddings_index[[word]]
+    if (!is.null(embedding_vector))
+      # Words not found in the embedding index will be all zeros.
+      embedding_matrix[index+1,] <- embedding_vector
+  }
+}
+```
+
+***
+### Define a model
+
+We will be using the same model architecture as before:
+
+```{r}
+model <- keras_model_sequential() %>% 
+  layer_embedding(input_dim = max_words, output_dim = embedding_dim, 
+                  input_length = maxlen) %>% 
+  layer_flatten() %>% 
+  layer_dense(units = 32, activation = "relu") %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+
+summary(model)
+```
+
+***
+### Load the GloVe embeddings in the model
+
+
+The embedding layer has a single weight matrix: a 2D float matrix where each entry _i_ is the word vector meant to be associated with index _i_. Simple enough. Load the GloVe matrix you prepared into the embedding layer, the first layer in the model.
+
+```{r}
+get_layer(model, index = 1) %>% 
+  set_weights(list(embedding_matrix)) %>% 
+  freeze_weights()
+```
+
+임베딩 레이어를 프리징해야 하는 이유:
+
+추가한 레이어가 가지고 있는 특성이 업데이트로 인해 오염됨
+
+***
+### Train and evaluate
+
+Let's compile our model and train it:
+
+```{r}
+model %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("acc")
+)
+
+history <- model %>% fit(
+  x_train, y_train,
+  epochs = 20,
+  batch_size = 32,
+  validation_data = list(x_val, y_val)
+)
+
+save_model_weights_hdf5(model, "pre_trained_glove_model.h5")
+```
+
+Let's plot its performance over time:
+
+```{r}
+plot(history)
+```
+
+![Figure 6.5 Training and validation metrics when using pretrained word embeddings](images/6.5.png){width=500px}
+
+
+
+The model quickly starts overfitting.
+
+정확도는 50% 대
+
+훈련 샘플이 적기 때문 
+
+***
+#### Listing 6.16 Training the same model without pretrained word embeddings
+
+```{r, echo=TRUE, results='hide'}
+model <- keras_model_sequential() %>% 
+  layer_embedding(input_dim = max_words, output_dim = embedding_dim, 
+                  input_length = maxlen) %>% 
+  layer_flatten() %>% 
+  layer_dense(units = 32, activation = "relu") %>% 
+  layer_dense(units = 1, activation = "sigmoid")
+
+model %>% compile(
+  optimizer = "rmsprop",
+  loss = "binary_crossentropy",
+  metrics = c("acc")
+)
+
+history <- model %>% fit(
+  x_train, y_train,
+  epochs = 20,
+  batch_size = 32,
+  validation_data = list(x_val, y_val)
+)
+```
+
+```{r}
+plot(history)
+```
+
+![Figure 6.6 Training and validation metrics without using pretrained word embeddings](images/6.6.png){width=500px}
+
+***
+#### Listing 6.17 Tokenizing the data of the test set
+
+```{r}
+test_dir <- file.path(imdb_dir, "test")
+
+labels <- c()
+texts <- c()
+
+for (label_type in c("neg", "pos")) {
+  label <- switch(label_type, neg = 0, pos = 1)
+  dir_name <- file.path(test_dir, label_type)
+  for (fname in list.files(dir_name, pattern = glob2rx("*.txt"), 
+                           full.names = TRUE)) {
+    texts <- c(texts, readChar(fname, file.info(fname)$size))
+    labels <- c(labels, label)
+  }
+}
+
+sequences <- texts_to_sequences(tokenizer, texts)
+x_test <- pad_sequences(sequences, maxlen = maxlen)
+y_test <- as.array(labels)
+```
+
+***
+#### Listing 6.18 Evaluating the model on the test set
+
+```{r}
+model %>% 
+  load_model_weights_hdf5("pre_trained_glove_model.h5") %>% 
+  evaluate(x_test, y_test, verbose = 0)
+```
+
+We get an appalling test accuracy of 56%. Working with just a handful of training samples is hard!

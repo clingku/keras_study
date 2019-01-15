@@ -1,0 +1,212 @@
+---
+title: "One-hot encoding of words or characters"
+output:
+  html_notebook:
+    highlight: textmate
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+***
+This chapter covers
+
+* Preprocessing text data into useful representations (6.1)
+
+* Working with recurrent neural networks (6.2-3)
+
+* Using 1D convnets for sequence processing(6.4)
+
+***
+이 장에서 다루는 레이어 유형
+
+* recurrent neural networks (RNN)
+
+* 1D convnets (1D CNN)
+
+이전 장에서 다룬 레이어 유형
+
+* 3장: densely connected networks
+
+* 5장: 2D convnets
+
+***
+Applications of these algorithms include the following:
+
+* Document classification and timeseries classification, such as identifying the topic of an article or the author of a book
+
+* Timeseries comparisons, such as estimating how closely related two documents or two stock tickers are
+
+* Sequence-to-sequence learning, such as decoding an English sentence into French
+
+* Sentiment analysis, such as classifying the sentiment of tweets or movie reviews as positive or negative
+
+* Timeseries forecasting, such as predicting the future weather at a certain location, given recent weather data
+
+***
+
+### 6.1 Working with text data
+
+Vectorizing text is the process of transforming text into numeric tensors This can be done in multiple ways:
+
+* Segment text into words, and transform each word into a vector.
+
+* Segment text into characters, and transform each character into a vector.
+
+* Extract n-grams of words or characters, and transform each n-gram into a vector. N-grams are overlapping groups of multiple consecutive words or characters.
+
+
+![Figure 6.1 From text to tokens to vectors](images/6.1.png){width=300px}
+
+
+***
+#### Understanding n-grams and bag-of-words
+
+set of 2-grams:
+
+{"The", "The cat", "cat", "cat sat", "sat", "sat on", "on", "on the", "the", "the mat", "mat"}
+
+set of 3-grams:
+
+{"The", "The cat", "cat", "cat sat", "The cat sat", "sat", "sat on", "on", "cat sat on", "on the", "the", "sat on the", "the mat", "mat", "on the mat"}
+
+***
+### 6.1.1 One-hot encoding of words and characters
+
+3장에서는 하나의 텍스트를 One-hot encoding 
+
+여기서는 각각의 단어 혹은 문자를 One-hot encoding 
+
+물론 단어의 n-gram, 문자의 n-gram으로도 인코딩 가능함
+
+***
+
+#### Listing 6.1 Word level one-hot encoding (toy example):
+
+```{r}
+# This is our initial data; one entry per "sample"
+# (in this toy example, a "sample" is just a sentence, but
+# it could be an entire document).
+samples <- c("The cat sat on the mat.", "The dog ate my homework.")
+  
+# First, build an index of all tokens in the data.
+token_index <- list()
+for (sample in samples)
+  # Tokenizes the samples via the strsplit function. In real life, you'd also
+  # strip punctuation and special characters from the samples.
+  for (word in strsplit(sample, " ")[[1]])
+    if (!word %in% names(token_index))
+      # Assigns a unique index to each unique word. Note that you don't
+      # attribute index 1 to anything.
+      token_index[[word]] <- length(token_index) + 2 
+
+# Vectorizes the samples. You'll only consider the first max_length 
+# words in each sample.
+max_length <- 10
+
+# This is where you store the results.
+results <- array(0, dim = c(length(samples), 
+                            max_length, 
+                            max(as.integer(token_index))))
+
+for (i in 1:length(samples)) {
+  sample <- samples[[i]]
+  words <- head(strsplit(sample, " ")[[1]], n = max_length)
+  for (j in 1:length(words)) {
+    index <- token_index[[words[[j]]]]
+    results[[i, j, index]] <- 1
+  }
+}
+```
+***
+#### Listing 6.2 Character level one-hot encoding (toy example):
+
+```{r}
+samples <- c("The cat sat on the mat.", "The dog ate my homework.")
+
+ascii_tokens <- c("", sapply(as.raw(c(32:126)), rawToChar))
+token_index <- c(1:(length(ascii_tokens)))
+names(token_index) <- ascii_tokens
+
+max_length <- 50
+
+results <- array(0, dim = c(length(samples), max_length, length(token_index)))
+
+for (i in 1:length(samples)) {
+  sample <- samples[[i]]
+  characters <- strsplit(sample, "")[[1]]
+  for (j in 1:length(characters)) {
+    character <- characters[[j]]
+    results[i, j, token_index[[character]]] <- 1
+  }
+}
+```
+
+***
+#### Listing 6.3 Using Keras for word-level one-hot encoding:
+Note that Keras has built-in utilities for doing one-hot encoding text at the word level or character level, starting from raw text data.
+
+케라스가 제공하는 내장 도구 사용 가능
+
+
+```{r}
+library(keras)
+
+samples <- c("The cat sat on the mat.", "The dog ate my homework.")
+
+# Creates a tokenizer, configured to only take into account the 1,000 
+# most common words, then builds the word index.
+tokenizer <- text_tokenizer(num_words = 1000) %>%
+  fit_text_tokenizer(samples)
+
+# Turns strings into lists of integer indices
+sequences <- texts_to_sequences(tokenizer, samples)
+
+# You could also directly get the one-hot binary representations. Vectorization 
+# modes other than one-hot encoding are supported by this tokenizer.
+one_hot_results <- texts_to_matrix(tokenizer, samples, mode = "binary")
+
+# How you can recover the word index that was computed
+word_index <- tokenizer$word_index
+
+cat("Found", length(word_index), "unique tokens.\n")
+```
+
+***
+### Listing 6.4 Word-level one-hot encoding with hashing trick (toy example):
+
+단어 인덱스를 사용하지 않고 정해진 크기의 벡터로 변환 
+
+크기가 1000인 벡터라면 1000개까지의 단어만 커버 가능
+
+단, 단어의 수가 벡터 크기보다 크면 hash collision 발생
+
+```{r}
+library(hashFunction)
+
+samples <- c("The cat sat on the mat.", "The dog ate my homework.")
+
+# We will store our words as vectors of size 1000.
+# Note that if you have close to 1000 words (or more)
+# you will start seeing many hash collisions, which
+# will decrease the accuracy of this encoding method.
+dimensionality <- 1000
+max_length <- 10
+
+results <- array(0, dim = c(length(samples), max_length, dimensionality))
+
+for (i in 1:length(samples)) {
+  sample <- samples[[i]]
+  words <- head(strsplit(sample, " ")[[1]], n = max_length)
+  for (j in 1:length(words)) {
+    # Hash the word into a "random" integer index
+    # that is between 0 and 1,000
+    index <- abs(spooky.32(words[[i]])) %% dimensionality
+    results[[i, j, index]] <- 1
+  }
+}
+```
+
+
