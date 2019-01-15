@@ -34,7 +34,9 @@ There are two ways to obtain word embeddings:
 * Load into your model word embeddings that were pre-computed using a different machine learning task than the one you are trying to solve. These are called "pre-trained word embeddings". 
 
 Let's take a look at both.
+
 ***
+
 ### Learning word embeddings with an embedding layer
 
 단어 사이의 의미 있는 관계를 기하학적인 공간에 반영하는 것
@@ -43,9 +45,10 @@ Let's take a look at both.
 
 The importance of certain semantic relationships varies from task to task.
 
-It’s thus reasonable to learn a new embedding space with every new task. Fortunately, backpropagation makes this easy, and Keras makes it even easier. It’s about learning the weights of a layer using layer_embedding.
+It’s thus reasonable to learn a new embedding space with every new task. Fortunately, backpropagation makes this easy, and Keras makes it even easier. It’s about learning the weights of a layer using layer embedding.
 
-
+***
+#### Listing 6.5
 
 ```{r}
 library(keras)
